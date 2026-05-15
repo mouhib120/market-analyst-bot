@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 
 import { getBtcContext, fetchFearGreed, runScan } from "./scanner.js";
 import { analyzeSymbol } from "./analyzer.js";
-import { formatHeader, formatCoinCard } from "./formatter.js";
+import { formatHeader, formatCoinCard, splitIntoMessages } from "./formatter.js";
 import { sendMessage } from "./telegram.js";
 
 const __dir   = dirname(fileURLToPath(import.meta.url));
@@ -49,21 +49,22 @@ async function main() {
   console.log("  Header sent");
 
   for (const a of analyses) {
-    const card = formatCoinCard(a);
-    await sendMessage(card);
-    console.log(`  Card sent: ${a.symbol}`);
+    const card   = formatCoinCard(a);
+    const chunks = splitIntoMessages(card);
+    for (const chunk of chunks) await sendMessage(chunk);
+    console.log(`  Card sent: ${a.symbol} (${chunks.length} message(s))`);
   }
 
   // ── 4. Scanner movers cards (if any) ──────────────────────────
   for (const mover of movers) {
-    // Skip if already in watchlist
     if (watchlist.includes(mover.symbol)) continue;
     try {
       console.log(`  Analyzing scanner mover ${mover.symbol}...`);
-      const a = await analyzeSymbol(mover.symbol);
-      const card = formatCoinCard(a);
-      await sendMessage("⚡ <b>Scanner Alert</b>\n" + card);
-      console.log(`  Mover card sent: ${mover.symbol}`);
+      const a      = await analyzeSymbol(mover.symbol);
+      const card   = "⚡ <b>Scanner Alert</b>\n" + formatCoinCard(a);
+      const chunks = splitIntoMessages(card);
+      for (const chunk of chunks) await sendMessage(chunk);
+      console.log(`  Mover card sent: ${mover.symbol} (${chunks.length} message(s))`);
     } catch (err) {
       console.error(`  Mover ${mover.symbol} failed: ${err.message}`);
     }

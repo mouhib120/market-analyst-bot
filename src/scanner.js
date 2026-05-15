@@ -90,7 +90,7 @@ export async function getBtcContext() {
   try {
     const [klines, ticker] = await Promise.all([
       getKlines("BTCUSDT", "1h", 50),
-      import("./binance.js").then((m) => m.getTicker24h("BTCUSDT")),
+      getTicker24h("BTCUSDT"),
     ]);
     const closes = klines.map((k) => k.close);
     const ema9Arr = calcEMAArray(closes, 9);

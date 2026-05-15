@@ -95,7 +95,7 @@ export async function analyzeSymbol(symbol) {
   const volTrend  = volumeTrend(d1);
 
   // Regime + 4H bias
-  const { regime } = detectRegime(d1);
+  const { regime, d1Close, d1Ema50 } = detectRegime(d1);
   const { bias: h4Bias } = detect4hBias(h4);
 
   // 1H indicators
@@ -119,6 +119,8 @@ export async function analyzeSymbol(symbol) {
     w52Low,
     pctFrom52High: +pctFrom52High.toFixed(1),
     regime,
+    d1Close:  d1Close  ?? price,
+    d1Ema50:  d1Ema50  ?? 0,
     h4Bias,
     rsi14d:   +rsi14d.toFixed(1),
     rsi14h1:  +rsi14h1.toFixed(1),

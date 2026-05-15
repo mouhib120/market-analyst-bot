@@ -23,7 +23,7 @@ function get(path) {
       });
     });
     req.on("error", reject);
-    req.setTimeout(8_000, () => { req.destroy(new Error("timeout")); });
+    req.setTimeout(15_000, () => { req.destroy(new Error("timeout")); });
   });
 }
 
