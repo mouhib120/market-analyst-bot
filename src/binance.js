@@ -13,12 +13,14 @@ function get(path) {
       res.on("end", () => {
         try {
           const j = JSON.parse(d);
-          if (j.code && j.code < 0) {
-            return reject(new Error(`Binance ${j.code}: ${j.msg}`));
+          // Catch any Binance error object — code may be 0, negative, or a string
+          if (!Array.isArray(j) && j.code !== undefined && j.msg) {
+            console.error(`[binance] ${path} → error (${j.code}): ${j.msg}`);
+            return reject(new Error(`Binance error (${j.code}): ${j.msg}`));
           }
           resolve(j);
         } catch (e) {
-          reject(new Error(`Parse failed: ${d.slice(0, 100)}`));
+          reject(new Error(`Parse failed: ${d.slice(0, 200)}`));
         }
       });
     });
