@@ -1,8 +1,8 @@
 import https from "node:https";
 
 export function sendMessage(text) {
-  const token  = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const token  = (process.env.TELEGRAM_BOT_TOKEN  ?? "").trim();
+  const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
   if (!token || !chatId) {
     console.log("[telegram] no credentials — printing to console:\n" + text);
     return Promise.resolve();

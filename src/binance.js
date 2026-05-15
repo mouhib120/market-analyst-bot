@@ -50,7 +50,12 @@ function toId(symbol) {
 
 function get(path) {
   return new Promise((resolve, reject) => {
-    const req = https.get({ hostname: HOST, path }, (res) => {
+    const opts = {
+      hostname: HOST,
+      path,
+      headers: { "User-Agent": "market-analyst-bot/1.0 (github.com/mouhib120/market-analyst-bot)" },
+    };
+    const req = https.get(opts, (res) => {
       let d = "";
       res.on("data", (c) => (d += c));
       res.on("end", () => {
