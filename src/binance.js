@@ -1,14 +1,19 @@
 // Public crypto data via CoinGecko API — no geo-blocking, no auth needed.
+// Set COINGECKO_API_KEY env var (free demo key from coingecko.com/api)
+// for 30 req/min. Without a key, GitHub Actions shared IPs get ~3-5 req/min.
 
 import https from "node:https";
 
-const HOST = "api.coingecko.com";
+const HOST    = "api.coingecko.com";
+const API_KEY = process.env.COINGECKO_API_KEY?.trim() || null;
 
-// Rate limit: CoinGecko free tier ~10-30 req/min. We enforce 1.2s minimum gap.
+// With a key: 2s gap = 30 req/min.  Without: 20s gap = 3 req/min (safe for shared IPs).
+const GAP_MS = API_KEY ? 2000 : 20_000;
+
 let _nextCallAt = 0;
 function throttle() {
   const wait = _nextCallAt - Date.now();
-  _nextCallAt = Math.max(Date.now(), _nextCallAt) + 1200;
+  _nextCallAt = Math.max(Date.now(), _nextCallAt) + GAP_MS;
   return wait > 0 ? new Promise((r) => setTimeout(r, wait)) : Promise.resolve();
 }
 
@@ -50,12 +55,9 @@ function toId(symbol) {
 
 function get(path) {
   return new Promise((resolve, reject) => {
-    const opts = {
-      hostname: HOST,
-      path,
-      headers: { "User-Agent": "market-analyst-bot/1.0 (github.com/mouhib120/market-analyst-bot)" },
-    };
-    const req = https.get(opts, (res) => {
+    const headers = { "User-Agent": "market-analyst-bot/1.0 (github.com/mouhib120/market-analyst-bot)" };
+    if (API_KEY) headers["x-cg-demo-api-key"] = API_KEY;
+    const req = https.get({ hostname: HOST, path, headers }, (res) => {
       let d = "";
       res.on("data", (c) => (d += c));
       res.on("end", () => {
@@ -77,13 +79,13 @@ function get(path) {
 
 // CoinGecko OHLC granularity (fixed by `days` parameter):
 //   days=1   → 30-min candles
-//   days=90  → 4-hourly candles  (~540 bars)
-//   days=365 → daily candles     (~365 bars)
+//   days=90  → 4-hourly candles (~540 bars)
+//   days=365 → daily candles    (~365 bars)
 //
 // interval mapping:
 //   "1d" → days=365 (daily)
 //   "4h" → days=90  (4H)
-//   "1h" → days=90  (4H — closest available; label accordingly in formatter)
+//   "1h" → days=90  (4H — closest available; labelled as "4H" in formatter)
 //   "5m" → days=1   (30-min — closest available)
 export async function getKlines(symbol, interval, limit = 200) {
   await throttle();
