@@ -1,0 +1,11 @@
+{
+  "name": "market-analyst-bot",
+  "version": "1.0.0",
+  "description": "4-hour crypto market analysis bot — sends Telegram reports with signals, levels, and regime",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {}
+}
