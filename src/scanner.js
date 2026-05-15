@@ -1,57 +1,28 @@
 import https from "node:https";
-import { calcEMAArray, calcRSI, calcATR } from "./indicators.js";
-import { getAllTickers, getKlines } from "./binance.js";
+import { calcEMAArray, calcRSI } from "./indicators.js";
+import { getAllTickers, getKlines, getTicker24h } from "./binance.js";
 
 const EXCLUDE_CONTAINS = ["UP", "DOWN", "BULL", "BEAR", "LONG", "SHORT"];
 const EXCLUDE_STARTS   = ["USDC", "BUSD", "TUSD", "DAI", "FDUSD", "PAXG"];
-const EXCLUDE_EXACT    = new Set(["BTCUSDT", "ETHUSDT", "USDCUSDT", "WBTCUSDT"]);
+const EXCLUDE_EXACT    = new Set(["BTCUSDT", "ETHUSDT", "USDCUSDT", "WBTCUSDT", "BNBUSDT"]);
 
 const CONFIG = {
   minQuoteVolume:    10_000_000,
   minPriceChangePct: 5,
-  maxPriceChangePct: 30,
-  minRVOL:           2.0,
-  minRSI:            45,
-  maxRSI:            80,
-  minScore:          50,
+  maxPriceChangePct: 50,
+  minScore:          30,
   topN:              3,
 };
-
-async function enrichCoin(ticker) {
-  try {
-    const klines = await getKlines(ticker.symbol, "5m", 21);
-    if (!Array.isArray(klines) || klines.length < 21) return null;
-    const vols   = klines.map((k) => k.vol);
-    const closes = klines.map((k) => k.close);
-    const currentVol = vols[vols.length - 1];
-    const avgVol     = vols.slice(0, -1).reduce((a, b) => a + b, 0) / (vols.length - 1);
-    const rvol       = avgVol > 0 ? currentVol / avgVol : 0;
-    if (rvol < CONFIG.minRVOL) return null;
-    const rsi14 = calcRSI(closes, 14);
-    if (rsi14 < CONFIG.minRSI || rsi14 > CONFIG.maxRSI) return null;
-    return {
-      symbol:         ticker.symbol,
-      price:          closes[closes.length - 1],
-      priceChangePct: parseFloat(ticker.priceChangePercent),
-      quoteVolume:    parseFloat(ticker.quoteVolume),
-      rvol:           +rvol.toFixed(2),
-      rsi14:          +rsi14.toFixed(1),
-    };
-  } catch {
-    return null;
-  }
-}
 
 function score(c) {
   let s = 0;
   const pct = c.priceChangePct;
-  if (pct >= 5  && pct < 10) s += 20;
-  if (pct >= 10 && pct < 20) s += 30;
-  if (pct >= 20)             s += 15;
-  if (c.rvol >= 3.0)         s += 15;
-  else if (c.rvol >= 2.0)    s += 8;
-  if (c.rsi14 >= 50 && c.rsi14 <= 70) s += 15;
-  if (c.quoteVolume >= 50_000_000)     s += 10;
+  if (pct >= 5  && pct < 10) s += 30;
+  if (pct >= 10 && pct < 20) s += 50;
+  if (pct >= 20)             s += 40;
+  if (c.quoteVolume >= 100_000_000) s += 30;
+  else if (c.quoteVolume >= 50_000_000)  s += 20;
+  else if (c.quoteVolume >= 10_000_000)  s += 10;
   return Math.max(0, Math.min(100, s));
 }
 
@@ -68,15 +39,15 @@ export async function runScan() {
       const pct = parseFloat(t.priceChangePercent);
       return vol >= CONFIG.minQuoteVolume && pct >= CONFIG.minPriceChangePct && pct <= CONFIG.maxPriceChangePct;
     });
-    const BATCH = 10;
-    const enriched = [];
-    for (let i = 0; i < universe.length; i += BATCH) {
-      const results = await Promise.allSettled(universe.slice(i, i + BATCH).map(enrichCoin));
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) enriched.push(r.value);
-      }
-    }
-    return enriched
+
+    const coins = universe.map((t) => ({
+      symbol:         t.symbol,
+      price:          parseFloat(t.lastPrice),
+      priceChangePct: parseFloat(t.priceChangePercent),
+      quoteVolume:    parseFloat(t.quoteVolume),
+    }));
+
+    return coins
       .map((c) => ({ ...c, score: score(c) }))
       .filter((c) => c.score >= CONFIG.minScore)
       .sort((a, b) => b.score - a.score)
@@ -88,18 +59,16 @@ export async function runScan() {
 
 export async function getBtcContext() {
   try {
-    const [klines, ticker] = await Promise.all([
-      getKlines("BTCUSDT", "1h", 50),
-      getTicker24h("BTCUSDT"),
-    ]);
-    const closes = klines.map((k) => k.close);
-    const ema9Arr = calcEMAArray(closes, 9);
+    const klines = await getKlines("BTCUSDT", "1h", 50);
+    const ticker  = await getTicker24h("BTCUSDT");
+    const closes  = klines.map((k) => k.close);
+    const ema9Arr  = calcEMAArray(closes, 9);
     const ema20Arr = calcEMAArray(closes, 20);
-    const rsi = calcRSI(closes, 14);
-    const price = closes.at(-1);
-    const e9  = ema9Arr.at(-1);
-    const e20 = ema20Arr.at(-1);
-    const trend = e9 > e20 ? "bullish" : e9 < e20 ? "bearish" : "flat";
+    const rsi      = calcRSI(closes, 14);
+    const price    = closes.at(-1);
+    const e9       = ema9Arr.at(-1);
+    const e20      = ema20Arr.at(-1);
+    const trend    = e9 > e20 ? "bullish" : e9 < e20 ? "bearish" : "flat";
     return {
       price:          +price.toFixed(2),
       rsi14:          +rsi.toFixed(1),

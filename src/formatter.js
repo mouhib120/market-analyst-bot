@@ -109,7 +109,7 @@ function explainMACD(bullish, histogram) {
     : "The MACD line has crossed BELOW the signal line. This means short-term momentum has flipped from positive to negative — sellers are gaining strength. Confirms the short-term downward pressure.";
 
   return (
-    `📉 <b>MACD (1H): ${dir}</b>\n` +
+    `📉 <b>MACD (4H): ${dir}</b>\n` +
     `MACD compares two moving averages (12-period vs 26-period EMA) to show momentum shifts.\n` +
     `  • MACD line crosses UP → bullish momentum building\n` +
     `  • MACD line crosses DOWN → bearish momentum building\n` +
@@ -142,30 +142,48 @@ function explainEMAs(price, ema21, ema50) {
 
 // ── Volume explanation ───────────────────────────────────────────
 
-function explainVolume(volTrend, change24h) {
-  const { ratio, label } = volTrend;
-  const isDown = change24h < 0;
+function fmtVolume(usd) {
+  if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
+  if (usd >= 1e6) return `$${(usd / 1e6).toFixed(0)}M`;
+  return `$${(usd / 1e3).toFixed(0)}K`;
+}
 
-  let interpretation;
-  if (ratio > 2 && isDown) {
-    interpretation = `⚠️ HIGH volume on a DOWN day = aggressive selling. Smart money is exiting. This is a WARNING sign — the dip could continue further before stabilizing.`;
-  } else if (ratio > 2 && !isDown) {
-    interpretation = `💪 HIGH volume on an UP day = strong buying conviction. Institutions are participating. This move has real support behind it.`;
-  } else if (ratio < 0.6 && isDown) {
-    interpretation = `💡 LOW volume on a DOWN day = weak selling. Not many sellers — this looks like a normal pullback, not a panicked dump. Could bounce quickly.`;
-  } else if (ratio < 0.6 && !isDown) {
-    interpretation = `⚠️ LOW volume on an UP day = weak buying. The rally lacks conviction. Could be a short-lived bounce.`;
+function explainVolume(quoteVolume, change24h) {
+  const isDown = change24h < 0;
+  const vol = typeof quoteVolume === "number" ? quoteVolume : parseFloat(quoteVolume) || 0;
+  const volStr = fmtVolume(vol);
+
+  let sizeLabel, sizeDesc;
+  if (vol >= 500_000_000) {
+    sizeLabel = "🔥 MASSIVE";
+    sizeDesc = "Extremely high participation — major institutions and market makers are active.";
+  } else if (vol >= 100_000_000) {
+    sizeLabel = "💪 HIGH";
+    sizeDesc = "Strong participation. This coin is on everyone's radar today.";
+  } else if (vol >= 30_000_000) {
+    sizeLabel = "🟡 MODERATE";
+    sizeDesc = "Average activity. Normal trading day for a mid-cap coin.";
   } else {
-    interpretation = `Normal market activity — no extreme volume signals today.`;
+    sizeLabel = "📉 LOW";
+    sizeDesc = "Light participation. Moves may not have strong follow-through.";
   }
 
+  const interpretation = isDown
+    ? vol >= 100_000_000
+      ? `⚠️ HIGH volume on a DOWN day = aggressive selling. Smart money is exiting. The drop has strong confirmation — be cautious.`
+      : `💡 Moderate/low volume on a DOWN day = weak selling. This looks like a normal pullback, not panic. Could bounce quickly.`
+    : vol >= 100_000_000
+      ? `💪 HIGH volume on an UP day = strong buying conviction. Institutions are participating. This move has real support.`
+      : `⚠️ Lower volume on an UP day = the rally lacks maximum conviction. Watch if volume increases to confirm the move.`;
+
   return (
-    `📦 <b>Volume: ${label} (${ratio}× the 20-day average)</b>\n` +
+    `📦 <b>24H Volume: ${volStr}  —  ${sizeLabel}</b>\n` +
     `Volume tells you HOW MANY people are participating in the move. It's the "fuel" behind price changes.\n` +
     `  • High volume on UP day   = strong, confirmed rally\n` +
     `  • High volume on DOWN day = strong, confirmed selloff\n` +
     `  • Low volume on UP day    = weak bounce (likely to fail)\n` +
     `  • Low volume on DOWN day  = weak dip (likely to recover)\n` +
+    `${sizeDesc}\n` +
     `${interpretation}`
   );
 }
@@ -324,7 +342,7 @@ export function formatCoinCard(a) {
   lines.push(explainRSI(a.rsi14d, "Daily"));
 
   lines.push("─".repeat(32));
-  lines.push(explainRSI(a.rsi14h1, "1-Hour"));
+  lines.push(explainRSI(a.rsi14h4, "4-Hour"));
 
   lines.push("─".repeat(32));
   lines.push(explainMACD(a.macdBullish, a.macdHist));
@@ -333,7 +351,7 @@ export function formatCoinCard(a) {
   lines.push(explainEMAs(a.price, a.ema21d, a.ema50d));
 
   lines.push("─".repeat(32));
-  lines.push(explainVolume(a.volTrend, a.change24h));
+  lines.push(explainVolume(a.quoteVolume, a.change24h));
 
   lines.push("─".repeat(32));
   lines.push(explainLevels(a.support, a.resistance, a.w52High, a.w52Low, a.price));

@@ -2,7 +2,6 @@ import { getKlines, getTicker24h } from "./binance.js";
 import { calcEMAArray, calcRSI, calcMACD, calcATR } from "./indicators.js";
 import { detectRegime, detect4hBias } from "./regime.js";
 
-// Cluster nearby price levels (within 2%) and keep the strongest
 function clusterLevels(levels, pricePct = 0.02) {
   if (!levels.length) return [];
   const sorted = [...levels].sort((a, b) => a - b);
@@ -20,7 +19,6 @@ function clusterLevels(levels, pricePct = 0.02) {
   return clusters;
 }
 
-// Find swing lows (support) and highs (resistance) using 5-bar pivot
 function findLevels(candles, price) {
   const rawSupport = [], rawResistance = [];
   for (let i = 2; i < candles.length - 2; i++) {
@@ -37,15 +35,6 @@ function findLevels(candles, price) {
   const support    = clusterLevels(rawSupport).filter((l) => l < price).sort((a, b) => b - a).slice(0, 3);
   const resistance = clusterLevels(rawResistance).filter((l) => l > price).sort((a, b) => a - b).slice(0, 3);
   return { support, resistance };
-}
-
-function volumeTrend(candles) {
-  const vols     = candles.map((c) => c.vol);
-  const last     = vols.at(-1);
-  const avg20    = vols.slice(-21, -1).reduce((s, v) => s + v, 0) / 20;
-  const ratio    = avg20 > 0 ? last / avg20 : 1;
-  const label    = ratio > 2 ? "VERY HIGH" : ratio > 1.5 ? "HIGH" : ratio < 0.5 ? "LOW" : "NORMAL";
-  return { ratio: +ratio.toFixed(2), label };
 }
 
 function genSignal(regime, h4Bias, rsi, price, ema21, support) {
@@ -69,12 +58,12 @@ function genSignal(regime, h4Bias, rsi, price, ema21, support) {
 }
 
 export async function analyzeSymbol(symbol) {
-  const [d1, h4, h1, ticker] = await Promise.all([
-    getKlines(symbol, "1d", 365),
-    getKlines(symbol, "4h", 120),
-    getKlines(symbol, "1h", 100),
-    getTicker24h(symbol),
-  ]);
+  // Sequential calls — CoinGecko throttle is built into binance.js (1.2s per call)
+  const d1     = await getKlines(symbol, "1d", 365);
+  const h4     = await getKlines(symbol, "4h", 120); // CoinGecko returns 4H candles
+  const ticker = await getTicker24h(symbol);
+  // Use same h4 data for short-term indicators (CoinGecko has no 1H OHLC endpoint)
+  const h4short = h4;
 
   const price     = parseFloat(ticker.lastPrice);
   const change24h = parseFloat(ticker.priceChangePercent);
@@ -84,26 +73,24 @@ export async function analyzeSymbol(symbol) {
   // 52-week range
   const w52High = Math.max(...d1.map((c) => c.high));
   const w52Low  = Math.min(...d1.map((c) => c.low));
-  const pctFrom52High = ((price - w52High) / w52High) * 100;
 
   // Daily indicators
-  const d1Closes  = d1.map((c) => c.close);
-  const ema21d    = calcEMAArray(d1Closes, 21).at(-1);
-  const ema50d    = calcEMAArray(d1Closes, 50).at(-1);
-  const rsi14d    = calcRSI(d1Closes, 14);
-  const atr14d    = calcATR(d1, 14);
-  const volTrend  = volumeTrend(d1);
+  const d1Closes = d1.map((c) => c.close);
+  const ema21d   = calcEMAArray(d1Closes, 21).at(-1);
+  const ema50d   = calcEMAArray(d1Closes, 50).at(-1);
+  const rsi14d   = calcRSI(d1Closes, 14);
+  const atr14d   = calcATR(d1.slice(-20), 14);
 
   // Regime + 4H bias
   const { regime, d1Close, d1Ema50 } = detectRegime(d1);
   const { bias: h4Bias } = detect4hBias(h4);
 
-  // 1H indicators
-  const h1Closes = h1.map((c) => c.close);
-  const rsi14h1  = calcRSI(h1Closes, 14);
-  const macd1h   = calcMACD(h1Closes);
+  // 4H short-term indicators (labeled as 4H in the output)
+  const h4Closes  = h4short.map((c) => c.close);
+  const rsi14h4   = calcRSI(h4Closes, 14);
+  const macd4h    = calcMACD(h4Closes);
 
-  // Key levels from daily
+  // Key levels from last 90 daily bars
   const { support, resistance } = findLevels(d1.slice(-90), price);
 
   // Signal
@@ -117,19 +104,19 @@ export async function analyzeSymbol(symbol) {
     low24h,
     w52High,
     w52Low,
-    pctFrom52High: +pctFrom52High.toFixed(1),
     regime,
     d1Close:  d1Close  ?? price,
     d1Ema50:  d1Ema50  ?? 0,
     h4Bias,
     rsi14d:   +rsi14d.toFixed(1),
-    rsi14h1:  +rsi14h1.toFixed(1),
+    rsi14h4:  +rsi14h4.toFixed(1),
     ema21d:   +ema21d.toFixed(4),
     ema50d:   +ema50d.toFixed(4),
     atr14d:   +atr14d.toFixed(4),
-    macdBullish: macd1h.bullish,
-    macdHist:    +macd1h.histogram?.toFixed(4),
-    volTrend,
+    macdBullish: macd4h.bullish,
+    macdHist:    +(macd4h.histogram ?? 0).toFixed(4),
+    // vol=0 from CoinGecko OHLC; pass quoteVolume for context instead
+    quoteVolume: parseFloat(ticker.quoteVolume),
     support,
     resistance,
     ...signalInfo,
