@@ -365,7 +365,7 @@ export function formatCoinCard(a) {
 // Split a long card into Telegram-safe chunks (max 4000 chars each)
 export function splitIntoMessages(text, maxLen = 4000) {
   if (text.length <= maxLen) return [text];
-  const separator = "\n─".repeat(16);
+  const separator = "\n\n" + "─".repeat(32) + "\n\n";
   const parts = text.split(separator);
   const chunks = [];
   let current = "";
